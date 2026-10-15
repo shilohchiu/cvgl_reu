@@ -8,10 +8,8 @@ Internal visualization tool built with Streamlit for image dataset. This tool al
 
 ## 🎯 Purpose
 
-The Image Quality Visualizer is designed to bridge the gap between raw data storage (Parquet) and human verification. Instead of manually browsing folders, users can:
-- Quickly cycle through thousands of images.
 - View metadata alongside each image. (**TODO**)
-- Log quality scores (0.0 [poor] - 1.0 [excellent]) to CSV
+- Log quality scores (0.0 [poor] - 1.0 [excellent]) & amend metadata.parquet
 
 ## ⚙️ Dependencies
 
@@ -49,9 +47,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Prepare Data
-Ensure your data is available in the root directory:
-- A file named `data.parquet` (or update the `PARQUET_FILE` variable in `app.py`).
-- If your images are stored as paths, ensure those paths are accessible from the machine running the app.
+Ensure your data is available in the root directory. Dataset is not provided
 
 ### 4. Launch the Application
 Run the Streamlit server:
@@ -66,7 +62,7 @@ The app will automatically open in your default web browser (usually at `http://
 
 You can customize the behavior of the tool by editing the configuration section at the top of `app.py`:
 
-- `PARQUET_FILE`: Path to your input data.
+- `PARQUET_FILE`: Path to data.
 - `IMAGE_COLUMN`: The column name in your Parquet file containing the images (bytes or file paths).
 - `METADATA_COLS`: A list of column names you wish to display in the metadata sidebar.
 - `OUTPUT_CSV`: The filename where quality scores will be saved.
