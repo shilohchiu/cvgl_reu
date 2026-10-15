@@ -1,13 +1,17 @@
-# Groundview Image Visualizer
+# Ground-view Image Visualizer
 
-Internal visualization tool built with Streamlit for auditing image dataset. This tool allows researchers to visually inspect images, view associated metadata, and verify quality scores to assist in dataset building.
+Internal visualization tool built with Streamlit for image dataset. This tool allows researchers to visually inspect images, view associated metadata, and verify quality scores to assist in dataset building.
+
+*Note that dataset is not included in repo as it is very large and should be added to folder separately.*
+
+**Right now, this tool only shows the sample images as placeholders until we are able to serve up the actual images with the necessary metadata alongside**
 
 ## 🎯 Purpose
 
 The Image Quality Visualizer is designed to bridge the gap between raw data storage (Parquet) and human verification. Instead of manually browsing folders, users can:
 - Quickly cycle through thousands of images.
-- View critical metadata alongside each image.
-- Log quality scores (1-5) and notes directly to a CSV for downstream analysis.
+- View metadata alongside each image. (**TODO**)
+- Log quality scores (0.0 [poor] - 1.0 [excellent]) to CSV
 
 ## ⚙️ Dependencies
 
