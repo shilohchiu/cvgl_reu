@@ -1,2 +1,8 @@
 .DS_Store
 burlington_vt
+*/__pycache__
+*/*/__pycache__
+*/.DS_Store
+*/*/.DS_Store
+data_processing/NO
+*_ignore*
