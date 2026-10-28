@@ -1,33 +1,18 @@
 #!/usr/bin/env python3
-"""
-make_split_mappings.py
+"""Write the official OpenCVL train/test assignment as JSON mapping files.
 
-Writes the official OpenCVL train/test assignment for every image, as JSON
-mapping files the WebDataset conversion pipeline can read.
-
-How the split is decided (from OpenCVL's release_v1.json):
+The folder a labels.json lives in decides the split (from release_v1.json), not
+the record contents:
     mapillary/cities/...            -> "train"
     mapillary/in_the_wild_test/...  -> "test_in_the_wild"
-The folder a labels.json lives in decides the split, not the record contents.
 
-This script does NOT re-implement that rule. It calls OpenCVL's own
-SplitAssigner, so the output always matches their official file.
+Calls OpenCVL's own SplitAssigner rather than re-implementing the rule.
 
 Usage:
-    python3 make_split_mappings.py \
-        --opencvl-repo /path/to/opencvl \
-        --dataset-root /gpfs3tmp/pi/swshah/CVGL/OpenCVL \
-        --output ./split_mappings
+    python3 make_split_mappings.py --opencvl-repo <repo> \
+        --dataset-root <dataset> --output ./split_mappings
 
-Optional:
-    --test-label test     (rename "test_in_the_wild" to "test" in the output)
-
-Output:
-    split_mappings/cities/<country>/<city>.json
-    split_mappings/in_the_wild_test/<country>/<city or all>.json
-        each file: { "<mapil_image_id>": "train", ... }
-    split_mappings/summary.json
-        counts per split and per city, plus a check against the paper's totals
+Writes split_mappings/<subset>/<country>/<city>.json plus summary.json.
 """
 
 import argparse
@@ -37,8 +22,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
-# Totals from the OpenCVL README / paper (Mapillary portion only).
-# train: 341,540 Mapillary city pairs. test_in_the_wild: 1,361 pairs.
+# Expected totals from the OpenCVL README/paper (Mapillary portion only).
 EXPECTED_COUNTS = {
     "train": 341540,
     "test_in_the_wild": 1361,
