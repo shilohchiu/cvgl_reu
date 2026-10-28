@@ -15,9 +15,7 @@ def load_data(file_path):
     return pd.read_parquet(file_path)
 
 def load_image_from_tar(tar_path, member_name):
-    """
-    Extracts a single image file from a tar archive without extracting the whole archive.
-    """
+    """Extract a single image from a tar without unpacking the archive."""
     try:
         with tarfile.open(tar_path, 'r') as tar:
             # Ensure the member name ends with .jpg as per dataset convention
@@ -33,9 +31,7 @@ def load_image_from_tar(tar_path, member_name):
     return None
 
 def resolve_ground_images(aerial_id, mapping_path):
-    """
-    Looks up the ground-view image IDs associated with a specific aerial image.
-    """
+    """Ground-view image IDs associated with an aerial image."""
     try:
         with open(mapping_path, 'r') as f:
             mapping = json.load(f)
@@ -56,10 +52,7 @@ def process_image(img_data):
     return None
 
 def save_score(output_csv, image_id, score, notes, view_type):
-    """
-    Saves the quality score and notes to a CSV file.
-    Schema: image_id, score, notes, view_type, timestamp
-    """
+    """Append a quality score row: image_id, score, notes, view_type, timestamp."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     result_df = pd.DataFrame([{
         "image_id": image_id,

@@ -31,14 +31,23 @@ Run in order:
 ## `many_to_one.py`
 
 ```bash
-python3 scripts/many_to_one.py --match anchors --country_dir NO/
+python3 scripts/many_to_one.py --country_dir NO/
 ```
 
-`--match` controls how grounds are assigned: `labels` (provider pairing), `nearest` (nearest patch center), `anchors` (share the provider's one-crop-per-ground crops among the grounds they cover — the many-to-one path), `metadata` (reuse an existing linked Parquet), or `grid` (synthetic grid; **not** consumable by sharding). See `--help` for tuning flags (`--max_distance_m`, `--anchor_radius_m`, `--min_grounds`, …).
+Builds the many-grounds-to-one-aerial mapping from the provider's own crops. Every crop center is a candidate anchor; anchors are used densest-cluster first, so one crop is shared by all the grounds it covers instead of each ground using its own overlapping crop. A ground outside every sharing radius keeps its own crop, and a ground with no crop of its own goes to the nearest anchor, so every ground with a usable pose gets an aerial. Each anchor's reach is capped by its crop's half-extent, so assigned grounds fall inside the patch. The run prints `Ground images with an aerial: X/Y`; labels without a usable pose cannot be matched and are reported.
+
+| Argument | Description | Default |
+| :--- | :--- | :--- |
+| `--labels_path` | Path to `labels.json`. | **Required** (single city) |
+| `--aerial_dir` | Aerial crop directory, used to cap each anchor to its crop extent. | **Required** (single city) |
+| `--output_dir` | Directory for the mapping and counts. | **Required** (single city) |
+| `--anchor_radius_m` | Max ground-to-patch-center distance. | `40` |
+| `--min_grounds` | Only keep aerial patches with at least this many grounds. | `1` |
+| `--country_dir` | Process every city folder containing `labels.json`. | `None` |
 
 ## `sharding_script.py`
 
-Consumes `aerial/aerial_to_grounds.json` as authoritative and rejects synthetic `grid` keys. Validates that assigned grounds actually fall inside their patch, recomputes UTM offsets from the patch center, and writes size-bounded `.tar` shards plus Parquet indexes.
+Consumes `aerial/aerial_to_grounds.json` as authoritative. Validates that every mapped aerial key matches a provider patch and that assigned grounds actually fall inside their patch, recomputes UTM offsets from the patch center, and writes size-bounded `.tar` shards plus Parquet indexes.
 
 ```bash
 # All cities in a country directory
@@ -66,7 +75,7 @@ python3 scripts/sharding_script.py \
 
 ## `visual_qa.py`
 
-Reads `metadata.parquet`, the per-image JSON from the ground shard, and the linked aerial patch, then writes annotated `pair_<ground_id>.jpg` previews (ground left, aerial right, with lat/lon/heading) to `<city>/aerial/samples_preview/`. Uses the assigned patch — not the ground's own provider crop — so the offsets and dot stay consistent. Sampling uses a fixed seed.
+Reads `metadata.parquet`, the per-image JSON from the ground shard, and the linked aerial patch, then writes annotated `pair_<ground_id>.jpg` previews (ground left, aerial right, with lat/lon/heading) to `<city>/aerial/samples_preview/`. Uses the assigned patch, not the ground's own provider crop, so the offsets and dot stay consistent. Sampling uses a fixed seed.
 
 ```bash
 # All cities (run sharding first)
@@ -103,4 +112,4 @@ python3 scripts/visual_qa.py --metadata_path NO/oslo/metadata.parquet
     └── samples_preview/                # visual QA outputs
 ```
 
-Ground shards hold `<id>.png` + `<id>.json`; aerial shards hold each patch image plus its center coordinates, size, and associated ground IDs. `metadata.parquet` is the primary lookup table — see [`architecture.md`](architecture.md) for every column and the full alignment workflow.
+Ground shards hold `<id>.png` + `<id>.json`; aerial shards hold each patch image plus its center coordinates, size, and associated ground IDs. `metadata.parquet` is the primary lookup table, see [`architecture.md`](architecture.md) for every column and the full alignment workflow.

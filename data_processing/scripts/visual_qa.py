@@ -18,9 +18,7 @@ FONT_CANDIDATES = (
 
 
 def load_font(size):
-    """
-    Load a scalable font for the label, falling back to the bitmap default.
-    """
+    """Scalable font for the label, falling back to the bitmap default."""
     for path in FONT_CANDIDATES:
         if Path(path).exists():
             try:
@@ -34,9 +32,7 @@ def load_font(size):
 
 
 def is_missing(value):
-    """
-    True for None / NaN / NA, without choking on non-scalar values.
-    """
+    """True for None / NaN / NA, without choking on non-scalar values."""
     if value is None:
         return True
     try:
@@ -46,9 +42,7 @@ def is_missing(value):
 
 
 def pick(row, meta, key, default=None):
-    """
-    Prefer the parquet field, falling back to the per-image shard metadata.
-    """
+    """Prefer the parquet field, falling back to the per-image shard metadata."""
     value = row.get(key)
     if is_missing(value):
         value = meta.get(key, default)
@@ -58,9 +52,7 @@ def pick(row, meta, key, default=None):
 
 
 def arrow_head(tip, direction, length, half_width):
-    """
-    Triangle points for an arrowhead at `tip`, pointing along `direction`.
-    """
+    """Triangle points for an arrowhead at `tip`, pointing along `direction`."""
     ux, uy = direction
     base_x, base_y = tip[0] - length * ux, tip[1] - length * uy
     perp_x, perp_y = -uy, ux
@@ -72,9 +64,7 @@ def arrow_head(tip, direction, length, half_width):
 
 
 def find_image(directory, filename, stem):
-    """
-    Locate an image by its recorded filename, then by its ID stem.
-    """
+    """Locate an image by its recorded filename, then by its ID stem."""
     directory = Path(directory)
     if filename and not is_missing(filename):
         candidate = directory / Path(filename).name
@@ -88,13 +78,7 @@ def find_image(directory, filename, stem):
 
 
 def resolve_shard_path(raw_shard, city_root):
-    """
-    Resolve the shard path recorded at sharding time.
-
-    ShardWriter stores the path it was given, which may be relative to whatever
-    working directory the sharding run used. Try the current directory, the city
-    root, and finally the bare filename next to the city's other shards.
-    """
+    """Resolve a shard path recorded at sharding time, trying the cwd and city root."""
     if is_missing(raw_shard):
         return None
     path = Path(raw_shard)
@@ -110,13 +94,9 @@ def resolve_shard_path(raw_shard, city_root):
 
 
 class AerialPatches:
-    """
-    Aerial patch images and metadata, read from the aerial shards.
+    """Aerial patches and metadata read from the aerial shards.
 
-    The reference pipeline renders previews from the aerial belonging to the
-    assigned patch, so the image and the offsets share one center. Reading the
-    shard (keyed by `aerial_id`) reproduces that; the source aerial directory
-    may contain a different crop per ground.
+    Uses the assigned patch so the image and offsets share one center.
     """
 
     def __init__(self, aerial_dir, city_root=None):
@@ -136,9 +116,7 @@ class AerialPatches:
             self._index_shards()
 
     def _index_shards(self):
-        """
-        Fall back to scanning the aerial shards when no metadata table exists.
-        """
+        """Scan the aerial shards when no metadata table exists."""
         for shard in sorted(self.aerial_dir.glob("aerial-*.tar")):
             try:
                 with tarfile.open(shard, "r") as tar:
@@ -149,9 +127,7 @@ class AerialPatches:
                 continue
 
     def _resolve(self, raw):
-        """
-        Resolve a shard path recorded at sharding time.
-        """
+        """Resolve a shard path recorded at sharding time."""
         path = Path(raw)
         if path.is_absolute():
             candidates = [path]
@@ -182,9 +158,7 @@ class AerialPatches:
         return self._tars[path]
 
     def get(self, aerial_id):
-        """
-        Return {'image_bytes', 'meta'} for an aerial patch, or None.
-        """
+        """Return {'image_bytes', 'meta'} for an aerial patch, or None."""
         aerial_id = str(aerial_id)
         tar = self._tar(aerial_id)
         if tar is None:
@@ -202,8 +176,7 @@ class AerialPatches:
             except (KeyError, TypeError, json.JSONDecodeError):
                 meta = {}
             self._meta_cache[aerial_id] = meta
-        # Image bytes are not cached: a full run touches every patch, and the
-        # shard read is cheap.
+        # Image bytes are not cached; the shard read is cheap.
         return {"image_bytes": image_file.read(), "meta": meta}
 
     def close(self):
@@ -216,9 +189,7 @@ class AerialPatches:
 
 
 def read_ground_json(tar, ground_id):
-    """
-    Read the ground's per-image metadata JSON from its shard, if available.
-    """
+    """Read the ground's per-image metadata JSON from its shard, if available."""
     if tar is None:
         return {}
     try:
@@ -234,12 +205,10 @@ def read_ground_json(tar, ground_id):
 
 
 def load_index(city_root, linked_metadata_path=None):
-    """
-    Build the per-ground index from the sharding metadata parquets.
+    """Build the per-ground index from the sharding metadata parquets.
 
-    metadata.parquet already carries the full linked ground record (including
-    `aerial_id`, `shard`, and `has_aerial`); ground_metadata_linked.parquet is
-    read as a fallback and merged only for any link columns it adds.
+    metadata.parquet already carries the linked record; ground_metadata_linked
+    is a fallback and only contributes missing link columns.
     """
     metadata_path = Path(city_root) / "metadata.parquet"
     linked_path = (
@@ -272,8 +241,7 @@ def load_index(city_root, linked_metadata_path=None):
     if "has_aerial" in df.columns:
         df = df[df["has_aerial"].fillna(False)]
 
-    # Without the linked parquet there is no shard column. A single-shard city
-    # (typical in tests) can still resolve its per-image JSON.
+    # Without the linked parquet, a single-shard city can still resolve its JSON.
     if "shard" not in df.columns:
         shards = sorted(Path(city_root).glob("dataset-*.tar"))
         if len(shards) == 1:
@@ -285,12 +253,10 @@ def load_index(city_root, linked_metadata_path=None):
 
 def create_qa_pair(row, tar, ground_dir, aerial_dir, output_dir,
                    aerial_patches=None):
-    """
-    Generates a visual QA pair: aerial patch with ground dot and heading arrow,
-    using the recomputed physical UTM offsets from the metadata.
+    """Render a QA pair: aerial patch with ground dot and heading arrow.
 
-    The aerial is the patch written for `aerial_id` (as in the reference
-    pipeline), so the image, its GSD, and the offsets all share one center.
+    Uses the patch written for `aerial_id`, so image, GSD, and offsets share
+    one center.
     """
     ground_id = str(row["ground_id"])
     meta = read_ground_json(tar, ground_id)
@@ -414,11 +380,9 @@ def create_qa_pair(row, tar, ground_dir, aerial_dir, output_dir,
 
 def process_city(city, city_root, ground_dir, aerial_dir, output_dir,
                  linked_metadata_path=None, image_id=None, limit=None, seed=1):
-    """
-    Generate QA pairs for one city from its sharding metadata.
+    """Generate QA pairs for one city from its sharding metadata.
 
-    When sampling (`limit`), records are shuffled with a fixed `seed` first so
-    previews span the dataset and the same records are chosen on every run.
+    Sampling shuffles with a fixed seed, so runs select the same records.
     """
     city_root = Path(city_root)
     df = load_index(city_root, linked_metadata_path)

@@ -16,10 +16,7 @@ AERIAL_METADATA_COLUMNS = [
 
 OFFSET_COLUMNS = ["offset_east_m", "offset_north_m"]
 
-# The ground index is the linked one, matching the reference Burlington
-# ground_metadata_linked.parquet: the ground record plus its aerial
-# association, shard location, and UTM offsets. Both metadata.parquet and
-# aerial/ground_metadata_linked.parquet are written with these columns.
+# Linked ground index: ground record + aerial association, shard, and offsets.
 LINKED_METADATA_COLUMNS = [
     "ground_id", "shard", "is_panorama", "has_label", "mapil_sequence_id",
     "quality_score", "captured_at", "lat", "lon", "heading", "aerial_id",
@@ -30,9 +27,7 @@ METADATA_COLUMNS = LINKED_METADATA_COLUMNS
 
 
 def get_utm_crs_by_zone(utm_zone, is_north=True):
-    """
-    Construct the standard WGS84 UTM CRS for a zone and hemisphere.
-    """
+    """WGS84 UTM CRS for a zone and hemisphere."""
     hemisphere = "north" if is_north else "south"
     return CRS.from_string(
         f"+proj=utm +zone={utm_zone} +{hemisphere} +datum=WGS84 +units=m +no_defs"
@@ -40,19 +35,12 @@ def get_utm_crs_by_zone(utm_zone, is_north=True):
 
 
 def get_utm_zone(lat, lon):
-    """
-    UTM zone and hemisphere for a point
-    """
+    """UTM zone and hemisphere for a point."""
     return int((lon + 180) // 6 + 1), lat >= 0
 
 
 def get_zone_transformers(lat, lon, cache):
-    """
-    Return (to_utm, to_latlon) for the UTM zone containing lat/lon.
-
-    One transformer pair is created per zone and reused, as in the reference
-    pipeline, so points in the same zone share the same projection.
-    """
+    """(to_utm, to_latlon) for the zone containing lat/lon, cached per zone."""
     key = get_utm_zone(lat, lon)
     if key not in cache:
         utm_crs = get_utm_crs_by_zone(*key)
@@ -64,26 +52,17 @@ def get_zone_transformers(lat, lon, cache):
 
 
 def compute_utm_offsets(transformer, aerial_lat, aerial_lon, ground_lat, ground_lon):
-    """
-    Compute physical offsets in meters between aerial center and ground point.
-
-    Same calculation as the reference pipeline: project both points into UTM and
-    take the ground displacement from the patch center, rounded to centimeters.
-    """
+    """Ground displacement from the patch center in meters, rounded to cm."""
     ax, ay = transformer.transform(aerial_lon, aerial_lat)
     gx, gy = transformer.transform(ground_lon, ground_lat)
     return round(gx - ax, 2), round(gy - ay, 2)
 
 
 def select_heading(entry):
-    """
-    Heading for the ground camera, returning (heading, source).
+    """(heading, source) for the ground camera.
 
-    Mapillary's raw heading is a placeholder (about 7.8 degrees) when
-    `heading_mapilraw_before_meridian_is_zero` is set: the reported heading was
-    zero before the meridian correction, so it does not describe the camera.
-    Those frames take the OpenSfM heading. Otherwise the raw heading is kept,
-    since it reports the camera-facing direction.
+    The raw heading is a placeholder before the meridian correction, so those
+    frames take the OpenSfM heading.
     """
     raw = entry.get("heading_mapilraw")
     opensfm = entry.get("heading_mapilopensfm")
@@ -97,15 +76,10 @@ def select_heading(entry):
 
 
 def select_pose(entry):
-    """
-    Choose the ground pose for this entry, matching the OpenCVL paper.
+    """Ground pose for this entry: raw Mapillary pose, OpenSfM if missing.
 
-    The paper constructs each 100 m aerial crop around the raw Mapillary GNSS
-    pose, with the camera randomly placed within +/-20 m of the patch center
-    along each axis. Its corrected evaluation poses are not part of labels.json,
-    and Mapillary's OpenSfM pose is explicitly described as noisy, so the raw
-    pose is the one that defines the dataset geometry. OpenSfM is used only when
-    the raw fields are missing.
+    Matches the OpenCVL construction, which builds each crop around the raw
+    GNSS pose (camera within +/-20 m of the patch center).
     """
     raw_latlon = entry.get("ground_latlon_mapilraw") or entry.get("ground_latlon")
     heading, heading_source = select_heading(entry)
@@ -141,13 +115,9 @@ def select_pose(entry):
 
 
 def get_label_offsets(entry):
-    """
-    Displacement of the ground point from the aerial patch center, in meters.
+    """Ground-to-center displacement in meters from the labels' pixel offsets.
 
-    The labels store the displacement as pixel offsets at the patch resolution
-    (dx/dy, m/px) for the selected pose. These are only used to recover each
-    patch's center; the sharded offsets themselves are recomputed in UTM.
-    Returns None when the labels don't carry the needed fields.
+    Only used to recover patch centers; sharded offsets are recomputed in UTM.
     """
     pose = select_pose(entry)
     resolution = entry.get('resolution')
@@ -158,12 +128,7 @@ def get_label_offsets(entry):
 
 def recover_patch_center(ground_lat, ground_lon, offset_east_m, offset_north_m,
                          transformers):
-    """
-    Recover the aerial patch center from a ground point and its offset.
-
-    Offsets are measured as ground minus center, so center = ground - offset.
-    `transformers` is the (to_utm, to_latlon) pair for the ground's zone.
-    """
+    """Patch center = ground point - offset (offsets are ground minus center)."""
     to_utm, to_latlon = transformers
     gx, gy = to_utm.transform(ground_lon, ground_lat)
     center_lon, center_lat = to_latlon.transform(
@@ -173,16 +138,11 @@ def recover_patch_center(ground_lat, ground_lon, offset_east_m, offset_north_m,
 
 
 def make_aerial_id(lat, lon):
-    """
-    Burlington-style aerial key encoding the patch center coordinates.
-    """
     return f"aerial_{lat:.7f}_{lon:.7f}"
 
 
 def make_shard_writer(path, max_shard_size, prefix):
-    """
-    Create a webdataset ShardWriter that splits by byte size.
-    """
+    """webdataset ShardWriter that splits by byte size only."""
     return wds.ShardWriter(
         str(Path(path) / f"{prefix}-%06d.tar"),
         maxsize=max_shard_size,
@@ -191,17 +151,13 @@ def make_shard_writer(path, max_shard_size, prefix):
 
 
 def remove_if_empty(writer, written):
-    """
-    webdataset opens the first shard eagerly; drop it when nothing was written.
-    """
+    """Drop the eagerly opened first shard when nothing was written."""
     if written == 0 and writer.fname and Path(writer.fname).exists():
         Path(writer.fname).unlink()
 
 
 def assert_unique_ground_ids(labels):
-    """
-    webdataset requires unique keys per sample; fail before writing anything.
-    """
+    """Fail before writing if sample keys are not unique."""
     counts = Counter(str(entry['mapil_image_id']) for entry in labels)
     duplicates = [gid for gid, n in counts.items() if n > 1]
     if duplicates:
@@ -213,10 +169,7 @@ def assert_unique_ground_ids(labels):
 
 
 def clear_stale_shards(directory, prefix, overwrite):
-    """
-    Shard numbering restarts at 0, so leftover shards from a previous run would
-    be picked up alongside the new ones.
-    """
+    """Remove leftover shards from a previous run, which would be mixed in."""
     stale = sorted(Path(directory).glob(f"{prefix}-*.tar"))
     if not stale:
         return
@@ -233,14 +186,10 @@ def clear_stale_shards(directory, prefix, overwrite):
 def shard_dataset(city, labels_path, ground_images_dir, aerial_images_dir,
                   output_base_dir, max_shard_size_gb=5, overwrite=False,
                   aerial_mapping_path=None):
-    """
-    Recompute UTM offsets and shard by size, using the association produced by
-    many_to_one.py.
+    """Recompute UTM offsets and shard by size using many_to_one.py's mapping.
 
-    The mapping (`aerial/aerial_to_grounds.json`) is authoritative: only the
-    aerials and grounds it names are written, and each ground is attached to
-    the aerial it names. Mapping keys must match provider patches
-    (`aerial_<lat>_<lon>`), i.e. come from the labels or nearest modes.
+    The mapping is authoritative: only patches/grounds it names are written.
+    Keys must match provider patches (`aerial_<lat>_<lon>`).
     """
     MAX_SHARD_SIZE = int(max_shard_size_gb * 1024 * 1024 * 1024)
     print(f"Loading labels from {labels_path}...")
@@ -264,7 +213,7 @@ def shard_dataset(city, labels_path, ground_images_dir, aerial_images_dir,
     if not mapping_path.exists():
         raise FileNotFoundError(
             f"Aerial mapping not found: {mapping_path}. Run many_to_one.py for "
-            f"this city first (--match labels or nearest)."
+            f"this city first."
         )
     with open(mapping_path, 'r') as f:
         mapping = json.load(f)
@@ -313,9 +262,7 @@ def shard_dataset(city, labels_path, ground_images_dir, aerial_images_dir,
     if unknown:
         raise ValueError(
             f"{len(unknown)} mapping aerial key(s) do not match provider patches "
-            f"(e.g. {unknown[:3]}). Generate the mapping with "
-            f"`many_to_one.py --match labels`, `--match nearest`, or "
-            f"`--match anchors`."
+            f"(e.g. {unknown[:3]}). Regenerate the mapping with `many_to_one.py`."
         )
 
     ground_entries = {str(entry['mapil_image_id']): entry for entry in labels}
@@ -451,9 +398,7 @@ def shard_dataset(city, labels_path, ground_images_dir, aerial_images_dir,
                 if pose.get('heading_source') == 'mapilopensfm':
                     heading_from_opensfm += 1
                 g_lat, g_lon = pose['lat'], pose['lon']
-                # Offsets are recomputed from UTM coordinates relative to the
-                # patch center, exactly as the reference pipeline does, rather
-                # than trusting the labels' pixel-derived displacements.
+                # Recompute offsets in UTM against the patch center.
                 transformer = get_zone_transformers(g_lat, g_lon, transformer_cache)[0]
                 dx, dy = compute_utm_offsets(transformer, a_lat, a_lon, g_lat, g_lon)
                 if half_east is not None and (
@@ -465,8 +410,7 @@ def shard_dataset(city, labels_path, ground_images_dir, aerial_images_dir,
                 meta['offset_east_m'] = dx
                 meta['offset_north_m'] = dy
 
-                # ShardWriter assigns the record to the current shard; writer.fname
-                # reflects the shard this sample actually landed in.
+                # writer.fname is the shard this sample actually landed in.
                 writer.write({
                     "__key__": gid,
                     "png": img_path.read_bytes(),
@@ -495,8 +439,7 @@ def shard_dataset(city, labels_path, ground_images_dir, aerial_images_dir,
                     "offset_east_m": meta['offset_east_m'],
                     "offset_north_m": meta['offset_north_m'],
                 }
-                # metadata.parquet and ground_metadata_linked.parquet both
-                # carry the full linked index (Burlington layout).
+                # Both parquet paths carry the same linked index.
                 metadata_rows.append({k: row[k] for k in METADATA_COLUMNS})
                 linked_rows.append(row)
 
@@ -519,14 +462,12 @@ def shard_dataset(city, labels_path, ground_images_dir, aerial_images_dir,
             f"patch image; use a smaller --anchor_radius_m for the mapping."
         )
 
-    # Save metadata.parquet (the linked ground index, matching Burlington)
     if metadata_rows:
         df = pd.DataFrame(metadata_rows, columns=METADATA_COLUMNS)
         metadata_path = city_path / "metadata.parquet"
         df.to_parquet(metadata_path)
         print(f"Metadata saved to {metadata_path}")
 
-    # Save aerial metadata + ground/aerial linked metadata (Burlington layout)
     if aerial_metadata_rows:
         for row in aerial_metadata_rows:
             # Association count, as in the reference pipeline's aerial metadata.
