@@ -16,6 +16,26 @@ Run in order:
 2. **`scripts/sharding_script.py`** — validates and shards images into `.tar`, writes the Parquet indexes.
 3. **`scripts/visual_qa.py`** — renders side-by-side ground/aerial alignment previews for QA.
 
+```bash
+cd <path>
+pip install -r requirements.txt
+
+python3 scripts/many_to_one.py --country_dir <country>
+
+python3 scripts/sharding_script.py --country_dir <country>
+
+python3 scripts/visual_qa.py --country_dir <country>
+
+# re-run sharding if shards already exist
+python3 scripts/sharding_script.py --country_dir <country> --overwrite
+
+# verify
+ls <country>/<city>
+tar -tf <country>/<city>/dataset-000000.tar | head
+python3 -c "import pandas as pd; print(pd.read_parquet('<country>/<city>/metadata.parquet').head())"
+ls <country>/<city>/aerial/samples_preview
+```
+
 ## Input layout
 
 ```text
@@ -31,10 +51,14 @@ Run in order:
 ## `many_to_one.py`
 
 ```bash
-python3 scripts/many_to_one.py --country_dir NO/
+python3 scripts/many_to_one.py --country_dir <country>/
 ```
 
-Builds the many-grounds-to-one-aerial mapping from the provider's own crops. Every crop center is a candidate anchor; anchors are used densest-cluster first, so one crop is shared by all the grounds it covers instead of each ground using its own overlapping crop. A ground outside every sharing radius keeps its own crop, and a ground with no crop of its own goes to the nearest anchor, so every ground with a usable pose gets an aerial. Each anchor's reach is capped by its crop's half-extent, so assigned grounds fall inside the patch. The run prints `Ground images with an aerial: X/Y`; labels without a usable pose cannot be matched and are reported.
+**Builds the many-grounds-to-one-aerial mapping from the provider's own crops.**
+
+Every crop center is a candidate anchor; anchors are used densest-cluster first, so one crop is shared by all the grounds it covers instead of each ground using its own overlapping crop. A ground outside every sharing radius keeps its own crop, and a ground with no crop of its own goes to the nearest anchor, so every ground with a usable pose gets an aerial. Each anchor's reach is capped by its crop's half-extent, so assigned grounds fall inside the patch.
+
+prints `Ground images with an aerial: X/Y`; labels without a usable pose cannot be matched and are reported.
 
 | Argument | Description | Default |
 | :--- | :--- | :--- |
@@ -47,19 +71,22 @@ Builds the many-grounds-to-one-aerial mapping from the provider's own crops. Eve
 
 ## `sharding_script.py`
 
-Consumes `aerial/aerial_to_grounds.json` as authoritative. Validates that every mapped aerial key matches a provider patch and that assigned grounds actually fall inside their patch, recomputes UTM offsets from the patch center, and writes size-bounded `.tar` shards plus Parquet indexes.
+Consumes `aerial/aerial_to_grounds.json`
+- Validates that every mapped aerial key matches a provider patch and that assigned grounds actually fall inside their patch
+- recomputes UTM offsets from the patch center
+- writes size-bounded `.tar` shards plus Parquet indexes.
 
 ```bash
 # All cities in a country directory
-python3 scripts/sharding_script.py --country_dir NO/
+python3 scripts/sharding_script.py --country_dir <country>/
 
 # Single city
 python3 scripts/sharding_script.py \
-  --city oslo \
-  --labels_path NO/oslo/labels.json \
-  --ground_dir NO/oslo/ground \
-  --aerial_dir NO/oslo/aerial \
-  --output_dir NO/oslo \
+  --city <city> \
+  --labels_path <country>/<city>/labels.json \
+  --ground_dir <country>/<city>/ground \
+  --aerial_dir <country>/<city>/aerial \
+  --output_dir <country>/<city> \
   --max_shard_size 5
 ```
 
@@ -79,10 +106,10 @@ Reads `metadata.parquet`, the per-image JSON from the ground shard, and the link
 
 ```bash
 # All cities (run sharding first)
-python3 scripts/visual_qa.py --country_dir NO/
+python3 scripts/visual_qa.py --country_dir <country>/
 
 # Single city
-python3 scripts/visual_qa.py --metadata_path NO/oslo/metadata.parquet
+python3 scripts/visual_qa.py --metadata_path <country>/<city>/metadata.parquet
 ```
 
 | Argument | Description | Default |
